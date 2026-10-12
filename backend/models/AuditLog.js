@@ -1,6 +1,4 @@
-const db = require('../database/connection');
-
-const AuditLogModel = {
+module.exports = (db) => ({
     log(userId, action, entityType, entityId, details, ipAddress) {
         const stmt = db.prepare(`
       INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details, ip_address)
@@ -47,12 +45,40 @@ const AuditLogModel = {
 
         if (filters.limit) {
             query += ' LIMIT ?';
-            params.push(filters.limit);
+            params.push(parseInt(filters.limit));
+            if (filters.offset) {
+                query += ' OFFSET ?';
+                params.push(parseInt(filters.offset));
+            }
         }
 
         const stmt = db.prepare(query);
         return stmt.all(...params);
-    }
-};
+    },
 
-module.exports = AuditLogModel;
+    count(filters = {}) {
+        let query = 'SELECT COUNT(*) as count FROM audit_logs al WHERE 1=1';
+        const params = [];
+
+        if (filters.user_id) {
+            query += ' AND al.user_id = ?';
+            params.push(filters.user_id);
+        }
+        if (filters.action) {
+            query += ' AND al.action = ?';
+            params.push(filters.action);
+        }
+        if (filters.entity_type) {
+            query += ' AND al.entity_type = ?';
+            params.push(filters.entity_type);
+        }
+        if (filters.start_date) {
+            query += ' AND al.created_at >= ?';
+            params.push(filters.start_date);
+        }
+
+        const stmt = db.prepare(query);
+        const result = stmt.get(...params);
+        return result ? result.count : 0;
+    }
+});

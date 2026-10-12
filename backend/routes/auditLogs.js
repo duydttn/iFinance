@@ -1,28 +1,29 @@
 const express = require('express');
-const router = express.Router();
-const AuditLogModel = require('../models/AuditLog');
 const auth = require('../middleware/auth');
 
-router.get('/',
-    auth.authenticate,
-    auth.authorize('Admin'),
-    (req, res) => {
+module.exports = (container) => {
+    const router = express.Router();
+    const AuditLogModel = container.resolve('AuditLogModel');
+
+    router.get('/', auth.authenticate, auth.authorize('Admin'), (req, res) => {
         try {
             const filters = {
                 user_id: req.query.user_id,
                 action: req.query.action,
                 entity_type: req.query.entity_type,
-                start_date: req.query.start_date,
-                limit: req.query.limit ? parseInt(req.query.limit) : 100
+                limit: req.query.limit,
+                offset: req.query.offset
             };
 
             const logs = AuditLogModel.getAll(filters);
-            res.json({ logs });
+            const total = AuditLogModel.count(filters);
+
+            res.json({ logs, total });
         } catch (error) {
             console.error('Get audit logs error:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
-    }
-);
+    });
 
-module.exports = router;
+    return router;
+};

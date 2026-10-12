@@ -1,0 +1,109 @@
+// Figure 2.3 - Entity-Relationship Diagram (ERD) of the iFinance database
+//
+// HOW TO RENDER:
+//   1. Open https://dbdiagram.io/d
+//   2. Paste this whole file into the left editor
+//   3. Right side renders the ERD instantly
+//   4. Click "Export" -> "Export to PNG" (or PDF)
+//   5. Save as images/figure-2-3-erd.png
+//
+// Source of truth: backend/database/schema.sql
+//
+// ---------------------------------------------------------------
+
+Project iFinance {
+  database_type: 'SQLite'
+  Note: '''
+    iFinance — Personal Finance Management
+    and Intelligent Analytics System.
+
+    Normalized relational schema, migration-ready
+    for PostgreSQL.
+  '''
+}
+
+Table users {
+  id              integer    [pk, increment]
+  username        text       [unique, not null]
+  password_hash   text       [not null, note: 'bcrypt hash']
+  role            text       [not null, note: "Admin | Accountant | Viewer"]
+  telegram_chat_id text
+  created_at      datetime   [default: `CURRENT_TIMESTAMP`]
+  updated_at      datetime   [default: `CURRENT_TIMESTAMP`]
+}
+
+Table categories {
+  id          integer  [pk, increment]
+  name        text     [not null]
+  scope       text     [not null, note: "personal | business | both"]
+  created_at  datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table rules {
+  id           integer  [pk, increment]
+  keyword      text     [not null, note: 'Substring matched against transaction description']
+  category_id  integer  [not null, ref: > categories.id]
+  scope        text     [not null, note: "personal | business | both"]
+  priority     integer  [default: 0]
+  created_at   datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table transactions {
+  id                     integer  [pk, increment]
+  date                   date     [not null]
+  description            text     [not null]
+  amount                 real     [not null]
+  type                   text     [not null, note: "income | expense"]
+  scope                  text     [not null, note: "personal | business"]
+  category_id            integer  [ref: > categories.id]
+  source                 text     [note: 'optional source / channel']
+  status                 text     [default: 'confirmed', note: "pending | confirmed | rejected"]
+  suggested_category_id  integer  [ref: > categories.id, note: 'AI suggestion before user confirms']
+  confidence_score       real     [note: 'Classifier confidence 0..1']
+  ai_explanation         text     [note: 'Short narrative from AI / classifier']
+  tax_rate               real     [default: 0]
+  tax_amount             real     [default: 0]
+  invoice_no             text
+  partner_name           text
+  created_by             integer  [ref: > users.id]
+  created_at             datetime [default: `CURRENT_TIMESTAMP`]
+  updated_at             datetime [default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    date            [name: 'idx_tx_date']
+    type            [name: 'idx_tx_type']
+    scope           [name: 'idx_tx_scope']
+    category_id     [name: 'idx_tx_category']
+    status          [name: 'idx_tx_status']
+  }
+}
+
+Table audit_logs {
+  id           integer  [pk, increment]
+  user_id      integer  [not null, ref: > users.id]
+  action       text     [not null, note: 'LOGIN, CREATE_TX, DELETE_TX, BACKUP, RESTORE, ...']
+  entity_type  text     [not null]
+  entity_id    integer
+  details      text
+  ip_address   text
+  created_at   datetime [default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    user_id    [name: 'idx_audit_user']
+    created_at [name: 'idx_audit_created']
+  }
+}
+
+Table settings {
+  key         text     [pk]
+  value       text     [not null]
+  updated_at  datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table releases {
+  id              integer   [pk, increment]
+  version         text      [unique, not null]
+  release_notes   text
+  is_current      boolean   [default: false]
+  created_at      datetime  [default: `CURRENT_TIMESTAMP`]
+}

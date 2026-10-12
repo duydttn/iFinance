@@ -1,12 +1,10 @@
-const db = require('../database/connection');
-
-const TransactionModel = {
+module.exports = (db) => ({
     create(data) {
         const stmt = db.prepare(`
       INSERT INTO transactions 
       (date, description, amount, type, scope, category_id, source, status, 
-       suggested_category_id, confidence_score, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       suggested_category_id, confidence_score, created_by, team, tax_rate, tax_amount, invoice_no, partner_name)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
         const result = stmt.run(
             data.date,
@@ -19,7 +17,12 @@ const TransactionModel = {
             data.status || 'confirmed',
             data.suggested_category_id || null,
             data.confidence_score || null,
-            data.created_by
+            data.created_by,
+            data.team || null,
+            data.tax_rate || 0,
+            data.tax_amount || 0,
+            data.invoice_no || null,
+            data.partner_name || null
         );
         return result.lastInsertRowid;
     },
@@ -45,6 +48,19 @@ const TransactionModel = {
     `;
         const params = [];
 
+        if (filters.applyTeamFilter) {
+            if (filters.team) {
+                query += ' AND t.team = ?';
+                params.push(filters.team);
+            } else {
+                query += ' AND t.team IS NULL';
+            }
+        } else if (filters.team) {
+            // Admin explicitly filtering by team
+            query += ' AND t.team = ?';
+            params.push(filters.team);
+        }
+
         if (filters.type) {
             query += ' AND t.type = ?';
             params.push(filters.type);
@@ -54,19 +70,24 @@ const TransactionModel = {
             params.push(filters.scope);
         }
         if (filters.status) {
-            query += ' AND t.status = ?';
-            params.push(filters.status);
+            if (Array.isArray(filters.status)) {
+                query += ` AND t.status IN (${filters.status.map(() => '?').join(',')})`;
+                params.push(...filters.status);
+            } else {
+                query += ' AND t.status = ?';
+                params.push(filters.status);
+            }
         }
         if (filters.category_id) {
             query += ' AND t.category_id = ?';
             params.push(filters.category_id);
         }
         if (filters.start_date) {
-            query += ' AND t.date >= ?';
+            query += ' AND date(t.date) >= date(?)';
             params.push(filters.start_date);
         }
         if (filters.end_date) {
-            query += ' AND t.date <= ?';
+            query += ' AND date(t.date) <= date(?)';
             params.push(filters.end_date);
         }
         if (filters.search) {
@@ -78,11 +99,50 @@ const TransactionModel = {
 
         if (filters.limit) {
             query += ' LIMIT ?';
-            params.push(filters.limit);
+            params.push(parseInt(filters.limit));
+            if (filters.offset) {
+                query += ' OFFSET ?';
+                params.push(parseInt(filters.offset));
+            }
         }
 
         const stmt = db.prepare(query);
         return stmt.all(...params);
+    },
+
+    count(filters = {}) {
+        let query = 'SELECT COUNT(*) as total FROM transactions t WHERE 1=1';
+        const params = [];
+
+        if (filters.applyTeamFilter) {
+            if (filters.team) {
+                query += ' AND t.team = ?';
+                params.push(filters.team);
+            } else {
+                query += ' AND t.team IS NULL';
+            }
+        } else if (filters.team) {
+            query += ' AND t.team = ?';
+            params.push(filters.team);
+        }
+
+        if (filters.type) { query += ' AND t.type = ?'; params.push(filters.type); }
+        if (filters.scope) { query += ' AND t.scope = ?'; params.push(filters.scope); }
+        if (filters.status) {
+            if (Array.isArray(filters.status)) {
+                query += ` AND t.status IN (${filters.status.map(() => '?').join(',')})`;
+                params.push(...filters.status);
+            } else {
+                query += ' AND t.status = ?'; params.push(filters.status);
+            }
+        }
+        if (filters.category_id) { query += ' AND t.category_id = ?'; params.push(filters.category_id); }
+        if (filters.start_date) { query += ' AND date(t.date) >= date(?)'; params.push(filters.start_date); }
+        if (filters.end_date) { query += ' AND date(t.date) <= date(?)'; params.push(filters.end_date); }
+        if (filters.search) { query += ' AND t.description LIKE ?'; params.push(`%${filters.search}%`); }
+
+        const stmt = db.prepare(query);
+        return stmt.get(...params).total;
     },
 
     update(id, data) {
@@ -117,6 +177,38 @@ const TransactionModel = {
             fields.push('status = ?');
             params.push(data.status);
         }
+        if (data.ai_explanation !== undefined) {
+            fields.push('ai_explanation = ?');
+            params.push(data.ai_explanation);
+        }
+        if (data.source !== undefined) {
+            fields.push('source = ?');
+            params.push(data.source);
+        }
+        if (data.tax_rate !== undefined) {
+            fields.push('tax_rate = ?');
+            params.push(data.tax_rate);
+        }
+        if (data.tax_amount !== undefined) {
+            fields.push('tax_amount = ?');
+            params.push(data.tax_amount);
+        }
+        if (data.invoice_no !== undefined) {
+            fields.push('invoice_no = ?');
+            params.push(data.invoice_no);
+        }
+        if (data.partner_name !== undefined) {
+            fields.push('partner_name = ?');
+            params.push(data.partner_name);
+        }
+        if (data.is_anomaly !== undefined) {
+            fields.push('is_anomaly = ?');
+            params.push(data.is_anomaly ? 1 : 0);
+        }
+        if (data.anomaly_note !== undefined) {
+            fields.push('anomaly_note = ?');
+            params.push(data.anomaly_note);
+        }
 
         fields.push('updated_at = CURRENT_TIMESTAMP');
         params.push(id);
@@ -136,10 +228,8 @@ const TransactionModel = {
         let query = `
       SELECT 
         type,
-        scope,
         SUM(amount) as total,
-        COUNT(*) as count,
-        AVG(amount) as average
+        COUNT(*) as count
       FROM transactions
       WHERE status = 'confirmed'
     `;
@@ -153,23 +243,62 @@ const TransactionModel = {
             query += ' AND date <= ?';
             params.push(filters.end_date);
         }
+        if (filters.category_id) {
+            query += ' AND category_id = ?';
+            params.push(filters.category_id);
+        }
+        if (filters.scope) {
+            query += ' AND scope = ?';
+            params.push(filters.scope);
+        }
+        if (filters.applyTeamFilter) {
+            if (filters.team) {
+                query += ' AND team = ?';
+                params.push(filters.team);
+            } else {
+                query += ' AND team IS NULL';
+            }
+        } else if (filters.team) {
+            query += ' AND team = ?';
+            params.push(filters.team);
+        }
 
-        query += ' GROUP BY type, scope';
+        query += ' GROUP BY type';
 
         const stmt = db.prepare(query);
-        return stmt.all(...params);
+        const rows = stmt.all(...params);
+
+        const result = {
+            total_income: 0,
+            total_expense: 0,
+            count_income: 0,
+            count_expense: 0
+        };
+
+        rows.forEach(row => {
+            if (row.type === 'income') {
+                result.total_income = row.total;
+                result.count_income = row.count;
+            } else if (row.type === 'expense') {
+                result.total_expense = row.total;
+                result.count_expense = row.count;
+            }
+        });
+
+        return result;
     },
 
     getCategoryStats(filters = {}) {
         let query = `
       SELECT 
         c.id,
-        c.name,
+        c.name as category_name,
         t.type,
+        t.scope,
         SUM(t.amount) as total,
         COUNT(*) as count,
         AVG(t.amount) as average,
-        STDEV(t.amount) as std_dev
+        SQRT(AVG(t.amount * t.amount) - AVG(t.amount) * AVG(t.amount)) as std_dev
       FROM transactions t
       JOIN categories c ON t.category_id = c.id
       WHERE t.status = 'confirmed'
@@ -184,12 +313,29 @@ const TransactionModel = {
             query += ' AND t.date <= ?';
             params.push(filters.end_date);
         }
+        if (filters.category_id) {
+            query += ' AND t.category_id = ?';
+            params.push(filters.category_id);
+        }
+        if (filters.scope) {
+            query += ' AND t.scope = ?';
+            params.push(filters.scope);
+        }
+        if (filters.applyTeamFilter) {
+            if (filters.team) {
+                query += ' AND t.team = ?';
+                params.push(filters.team);
+            } else {
+                query += ' AND t.team IS NULL';
+            }
+        } else if (filters.team) {
+            query += ' AND t.team = ?';
+            params.push(filters.team);
+        }
 
-        query += ' GROUP BY c.id, c.name, t.type';
+        query += ' GROUP BY c.id, c.name, t.type, t.scope';
 
         const stmt = db.prepare(query);
         return stmt.all(...params);
     }
-};
-
-module.exports = TransactionModel;
+});

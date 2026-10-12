@@ -1,37 +1,12 @@
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
-const UserModel = require('../models/User');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here-change-in-production';
-const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
-
 const auth = {
-    async hashPassword(password) {
-        return await bcrypt.hash(password, 10);
-    },
-
-    async comparePassword(password, hash) {
-        return await bcrypt.compare(password, hash);
-    },
-
-    generateToken(user) {
-        const payload = {
-            id: user.id,
-            username: user.username,
-            role: user.role
-        };
-        return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
-    },
-
-    verifyToken(token) {
-        try {
-            return jwt.verify(token, JWT_SECRET);
-        } catch (error) {
-            return null;
-        }
-    },
-
-    authenticate(req, res, next) {
+    /**
+     * Authenticate Middleware
+     * Resolves authService from the container to verify the token.
+     */
+    async authenticate(req, res, next) {
+        const container = req.app.get('container');
+        const authService = container.resolve('authService');
+        
         const authHeader = req.headers.authorization;
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -39,26 +14,20 @@ const auth = {
         }
 
         const token = authHeader.substring(7);
-        const decoded = auth.verifyToken(token);
+        const user = await authService.authenticate(token);
 
-        if (!decoded) {
+        if (!user) {
             return res.status(401).json({ error: 'Invalid or expired token' });
         }
 
-        const user = UserModel.findById(decoded.id);
-        if (!user) {
-            return res.status(401).json({ error: 'User not found' });
-        }
-
-        req.user = {
-            id: user.id,
-            username: user.username,
-            role: user.role
-        };
-
+        req.user = user;
         next();
     },
 
+    /**
+     * Authorize Middleware
+     * Checks if the authenticated user has the required role.
+     */
     authorize(...allowedRoles) {
         return (req, res, next) => {
             if (!req.user) {

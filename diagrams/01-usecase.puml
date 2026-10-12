@@ -1,0 +1,96 @@
+@startuml
+' Figure 2.1 - Use-case Diagram of the iFinance system
+' How to render:
+'   1. Open https://www.plantuml.com/plantuml/uml/ (or VS Code PlantUML extension, or draw.io > Arrange > Insert > Advanced > PlantUML)
+'   2. Paste this whole file
+'   3. Export as PNG / SVG, save to images/figure-2-1-usecase.png
+
+skinparam backgroundColor #FFFFFF
+skinparam usecase {
+    BackgroundColor #F5F9FF
+    BorderColor #1F4E79
+    ArrowColor #1F4E79
+}
+skinparam actorStyle awesome
+left to right direction
+title Figure 2.1 — Use-case Diagram of the iFinance system
+
+actor "Viewer" as Viewer
+actor "Accountant" as Accountant
+actor "Admin" as Admin
+actor "AI / External\nServices" as AI <<system>>
+
+rectangle "iFinance System" {
+  ' --- Authentication ---
+  usecase "Login / Logout" as UC_Auth
+
+  ' --- Transactions ---
+  usecase "Create Transaction" as UC_TxCreate
+  usecase "Update / Delete Transaction" as UC_TxEdit
+  usecase "List & Filter Transactions" as UC_TxList
+  usecase "Approve / Reject\npending transactions" as UC_TxApprove
+
+  ' --- Classification ---
+  usecase "Manage Categories" as UC_Cat
+  usecase "Manage Rules" as UC_Rule
+  usecase "Auto-classify\ntransaction" as UC_Classify <<service>>
+
+  ' --- Reporting ---
+  usecase "View Dashboard" as UC_Dash
+  usecase "Generate Report" as UC_Report
+
+  ' --- Intelligence ---
+  usecase "Run Anomaly Detection" as UC_Anomaly
+  usecase "Request AI Insight" as UC_AI
+
+  ' --- Operations ---
+  usecase "Manage Settings" as UC_Settings
+  usecase "Backup Data" as UC_Backup
+  usecase "Restore Data" as UC_Restore
+  usecase "Review Audit Log" as UC_Audit
+  usecase "Manage Users" as UC_Users
+  usecase "Manage Releases" as UC_Release
+}
+
+' --- Viewer ---
+Viewer --> UC_Auth
+Viewer --> UC_TxList
+Viewer --> UC_Dash
+Viewer --> UC_Report
+
+' --- Accountant ---
+Accountant --> UC_Auth
+Accountant --> UC_TxCreate
+Accountant --> UC_TxEdit
+Accountant --> UC_TxList
+Accountant --> UC_TxApprove
+Accountant --> UC_Cat
+Accountant --> UC_Rule
+Accountant --> UC_Dash
+Accountant --> UC_Report
+Accountant --> UC_Anomaly
+Accountant --> UC_AI
+Accountant --> UC_Settings
+
+' --- Admin (extends Accountant) ---
+Admin --> UC_Auth
+Admin --> UC_Backup
+Admin --> UC_Restore
+Admin --> UC_Audit
+Admin --> UC_Users
+Admin --> UC_Release
+Admin --|> Accountant : "inherits"
+
+' --- AI external service ---
+UC_AI ..> AI : <<uses>>
+UC_Classify ..> AI : <<uses>>
+UC_Anomaly ..> AI : <<may use>>
+
+' --- Includes / Extends ---
+UC_TxCreate ..> UC_Classify : <<include>>
+UC_TxApprove ..> UC_TxList : <<extend>>
+UC_Report ..> UC_Anomaly : <<extend>>
+UC_Backup ..> UC_Audit : <<include>>
+UC_Restore ..> UC_Audit : <<include>>
+
+@enduml

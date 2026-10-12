@@ -1,52 +1,35 @@
+'use strict';
+
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
-const authRoutes = require('./routes/auth');
-const transactionRoutes = require('./routes/transactions');
-const categoryRoutes = require('./routes/categories');
-const auditLogRoutes = require('./routes/auditLogs');
+const config = require('./config');
+const createApp = require('./app');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+/**
+ * server.js — Entry Point
+ */
+async function start() {
+    try {
+        const { app, server } = await createApp();
+        const container = app.get('container');
+        const aiManager = container.resolve('aiManager');
 
-app.use(helmet());
+        server.listen(config.PORT, () => {
+            console.log(`🚀 iFinance API running on port ${config.PORT}`);
+            console.log(`📦 Environment: ${config.NODE_ENV}`);
 
-app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
-    credentials: true
-}));
+            setTimeout(() => {
+                const status = aiManager.getStatus();
+                if (status.engineExists && status.modelExists) {
+                    console.log('🤖 Starting AI Studio Engine in background...');
+                    aiManager.startServer();
+                }
+            }, 5000);
+        });
+    } catch (err) {
+        console.error('❌ Failed to start server:', err);
+        process.exit(1);
+    }
+}
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-    message: 'Too many requests from this IP, please try again later'
-});
-
-app.use('/api/', limiter);
-
-app.use('/api/auth', authRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/audit-logs', auditLogRoutes);
-
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
-
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
-});
-
-app.listen(PORT, () => {
-    console.log(`iFinance API Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
-
-module.exports = app;
+start();

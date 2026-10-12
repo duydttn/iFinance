@@ -1,0 +1,81 @@
+@startuml
+' Figure 3.1 - iFinance system processing pipeline (request lifecycle)
+' How to render: paste into https://www.plantuml.com/plantuml/uml/ -> export PNG
+' Save as images/figure-3-1-pipeline.png
+
+skinparam backgroundColor #FFFFFF
+skinparam component {
+    BackgroundColor #F5F9FF
+    BorderColor #1F4E79
+}
+skinparam ArrowColor #1F4E79
+skinparam database {
+    BackgroundColor #FFF6E0
+    BorderColor #B26B00
+}
+
+title Figure 3.1 — iFinance Request Lifecycle (Layered Pipeline)
+
+actor "User" as user
+node "Electron Desktop Shell" as shell {
+  component "React Client\n(Vite)" as client
+}
+
+cloud "HTTPS / IPC" as net
+
+node "Backend (Node.js + Express)" as backend {
+  component "Routes\n(/auth, /transactions,\n/categories, /rules,\n/reports, /ai, /backup,\n/audit, /settings)" as routes
+
+  package "Middleware Chain" as mw {
+    component "Auth\n(JWT verify)" as auth
+    component "Validator\n(Joi schemas)" as validator
+    component "Rate Limiter" as rate
+  }
+
+  package "Service Layer" as svc {
+    component "authService" as authsvc
+    component "TransactionService\n+ Classifier" as txsvc
+    component "Reporting\n(deterministic)" as rep
+    component "Anomaly\nDetector" as anomaly
+    component "aiService\n(advisory)" as aisvc
+    component "BackupService" as backup
+    component "TaxService" as tax
+  }
+
+  package "Model Layer" as models {
+    component "User / Transaction /\nCategory / Rule /\nAuditLog / Setting" as model
+  }
+}
+
+database "SQLite\n(ifinance.db)" as db
+cloud "External LLM\nendpoint" as llm
+
+user --> client : "click /\nform input"
+client --> net : "REST JSON\n+ JWT"
+net --> routes
+routes --> auth
+auth --> validator : "if authorized"
+validator --> rate
+rate --> svc : "valid payload"
+
+svc --> models
+models --> db : "SQL"
+db --> models : "rows"
+models --> svc
+
+aisvc ..> llm : "optional prompt"
+anomaly ..> rep : "uses aggregates"
+txsvc ..> anomaly : "after create"
+
+svc --> routes : "domain result"
+routes --> net : "JSON response"
+net --> client
+client --> user : "UI refresh\n(KPI, charts)"
+
+note right of svc
+  Audit log is emitted by services
+  for sensitive actions (login,
+  delete, backup, restore).
+end note
+
+@enduml

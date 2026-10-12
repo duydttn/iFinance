@@ -1,0 +1,68 @@
+@startuml
+' Figure 2.2 - Activity Diagram for the monthly review workflow
+' How to render: paste into https://www.plantuml.com/plantuml/uml/ -> export PNG
+' Save as images/figure-2-2-activity.png
+
+skinparam backgroundColor #FFFFFF
+skinparam activity {
+    BackgroundColor #F5F9FF
+    BorderColor #1F4E79
+    DiamondBackgroundColor #FFF6E0
+    DiamondBorderColor #B26B00
+    ArrowColor #1F4E79
+}
+title Figure 2.2 — Activity Diagram of the Monthly Review Workflow
+
+|User|
+start
+:Open iFinance app;
+:Submit credentials\n(username, password);
+
+|Auth Middleware|
+if (Token / credentials valid?) then (no)
+    :Return 401 error;
+    stop
+endif
+
+|User|
+:Open Reports page;
+:Select month / date range;
+
+|Report Service|
+:Fetch transactions\nfor selected period;
+:Aggregate by type\n(income / expense);
+:Aggregate by category;
+
+|Anomaly Detector|
+:Compare aggregates\nagainst thresholds;
+if (Anomaly found?) then (yes)
+    :Tag anomaly indicators;
+endif
+
+|UI / Dashboard|
+:Render KPI cards,\ncharts, and anomaly badges;
+
+|User|
+if (Need AI narrative?) then (yes)
+    |AI Service|
+    :Build prompt from\ndeterministic aggregates;
+    :Call LLM endpoint;
+    :Return short narrative;
+    |UI / Dashboard|
+    :Show narrative\nbeside numbers;
+endif
+
+|User|
+:Make decisions\n(adjust budget,\ncreate rule, plan);
+
+if (Persist changes?) then (yes)
+    |Service Layer|
+    :Validate payload;
+    :Save changes;
+    |Audit Log|
+    :Record sensitive action;
+endif
+
+stop
+
+@enduml
